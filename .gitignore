@@ -1,2 +1,4 @@
 dagster_essentials.egg-info
 .env
+.tmp_*
+**/__pycache__/**
