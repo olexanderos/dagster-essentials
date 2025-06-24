@@ -66,3 +66,27 @@ def taxi_zones_file() -> None:
 
     with open(constants.TAXI_ZONES_FILE_PATH, "wb") as output_file:
         output_file.write(raw_zones.content)
+
+
+@dg.asset(deps=["taxi_zones_file"])
+def taxi_zones() -> None:
+    """
+    The raw taxi zones dataset, loaded into a DuckDB database
+    """
+    query = f"""
+        create or replace table zones as (
+            select
+                LocationID as zone_id,
+                zone,
+                borough,
+                the_geom as geometry
+          from '{constants.TAXI_ZONES_FILE_PATH}'
+        )
+    """
+    conn = backoff(
+        fn=duckdb.connect,
+        retry_on=(RuntimeError, duckdb.IOException),
+        kwargs={"database": os.getenv("DUCKDB_DATABASE")},
+        max_retries=10,
+    )
+    conn.execute(query)
