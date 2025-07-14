@@ -7,14 +7,16 @@ import requests
 from dagster_duckdb import DuckDBResource
 
 from dagster_essentials.assets import constants
+from dagster_essentials.partitions import monthly_partition
 
 
-@dg.asset
-def taxi_trips_file() -> None:
+@dg.asset(partitions_def=monthly_partition)
+def taxi_trips_file(context: dg.AssetExecutionContext) -> None:
     """
     The raw parquet files for the taxi trips dataset. Sourced from the NYC Open Data portal.
     """
-    month_to_fetch = "2023-03"
+    partition_date_str = context.partition_key
+    month_to_fetch = partition_date_str[:7]
     raw_trips = requests.get(
         f"https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_{month_to_fetch}.parquet"
     )
@@ -25,12 +27,14 @@ def taxi_trips_file() -> None:
         output_file.write(raw_trips.content)
 
 
-@dg.asset(deps=["taxi_trips_file"])
-def taxi_trips(database: DuckDBResource) -> None:
+@dg.asset(deps=["taxi_trips_file"], partitions_def=monthly_partition)
+def taxi_trips(context: dg.AssetExecutionContext, database: DuckDBResource) -> None:
     """
     The raw taxi trips dataset, loaded into a DuckDB database
     """
-    query = """
+    partition_date_str = context.partition_key
+    month_to_fetch = partition_date_str[:7]
+    query = f"""
         create or replace table trips as (
           select
             VendorID as vendor_id,
@@ -43,7 +47,7 @@ def taxi_trips(database: DuckDBResource) -> None:
             trip_distance as trip_distance,
             passenger_count as passenger_count,
             total_amount as total_amount
-          from 'data/raw/taxi_trips_2023-03.parquet'
+          from '{constants.TAXI_TRIPS_TEMPLATE_FILE_PATH.format(month_to_fetch)}'
         );
     """
 
